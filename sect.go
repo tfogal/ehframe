@@ -126,11 +126,13 @@ func main() {
 
   {
     rdr := Start(CFIs)
+    i := 0
     for cie, err := rdr.Next(); err == nil; cie, err = rdr.Next() {
       if cie.FDEp() {
-        fmt.Printf("FDE length=%d\n", cie.length())
+        fde := FDE(*cie)
+        fmt.Printf("%2d FDE length=%d, CIE=%d\n", i, fde.length(), rdr.CIE(fde))
       } else {
-        fmt.Printf("CIE length=%d\n", cie.length())
+        fmt.Printf("%2d CIE length=%d\n", i, cie.length())
         fmt.Printf("\tVersion:        %30d\n", cie.version())
         fmt.Printf("\tAugmentation:   %30s\n", cie.augmentation())
         fmt.Printf("\tCode alignment: %30d\n", cie.code_alignment())
@@ -139,6 +141,7 @@ func main() {
         fmt.Printf("\tAugment Len:    %30d\n", cie.augmentation_len())
         //fmt.Printf("\tAug data: %31s 0x%02x\n", "", cie.aug_data())
       }
+      i++
     }
   }
 
@@ -169,9 +172,10 @@ func main() {
 // A Reader is used for iterating through the CIEs present in the binary.  Each
 // call to 'Next()' gives back a new CIE.
 type Reader struct {
-  b []byte
-  idx uint
-  indices []uint
+  b []byte // data that holds the CIE information
+  idx uint // current idx / where we are in the iteration space
+  indices []uint // byte offset of each element.
+  associated []uint // for each FDE, which CIE (idx) it is associated with.
 }
 
 // internal.  builds the internal 'indices' table we use for seeking around.
@@ -211,6 +215,30 @@ func (r *Reader) Next() (*CIE, error) {
   r.idx++
   cie := (CIE)(r.b[cie_offset:])
   return &cie, nil
+}
+// Returns the associated index of the CIE for a given FDE.  The caller could
+// then read that CIE by Seek()ing to it.
+func (rdr *Reader) CIE(fde FDE) uint {
+  // subtract 1: Next() will have incremented it, and they must have called
+  // Next() before we got here, or they wouldn't have the FDE to give us as an
+  // argument.
+  offs := rdr.indices[rdr.idx-1] + 4 - uint(fde.id())
+  assert(offs >= 0) // probably calculated rdr.indices wrong?
+
+  // now we know what offset our CIE is at.  But we want to correlate that
+  // offset to an index; the user shouldn't know such offsets exist.
+  for k, v := range rdr.indices {
+    if v == uint(offs) {
+      return uint(k)
+    }
+  }
+  return uint(offs)
+}
+
+func assert(cond bool) {
+  if !cond {
+    panic("assertion failure")
+  }
 }
 
 // which algorithm to use for computing the address from the encoded values
@@ -483,6 +511,21 @@ func (cie *CIE) augmentation_len() uint64 {
   }
   alen, _ := uleb128(b[offset:offset+16])
   return alen
+}
+
+type FDE []byte
+// returns the length of the FDE.
+func (fde *FDE) length() uint {
+  as_cie := CIE(*fde)
+  return as_cie.length()
+}
+
+// returns the FDE's ID, which is the byte offset to its associated CIE.
+func (fde *FDE) id() uint {
+  // this is shared with the CIE, but the FDE's ID is interpreted as a signed
+  // offset.
+  as_cie := CIE(*fde)
+  return as_cie.id()
 }
 
 /*
