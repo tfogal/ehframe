@@ -93,9 +93,7 @@
 package main
 
 import(
-  "bytes"
   "debug/elf"
-  "encoding/binary"
   "flag"
   "fmt"
   "io"
@@ -130,7 +128,16 @@ func main() {
     for cie, err := rdr.Next(); err == nil; cie, err = rdr.Next() {
       if cie.FDEp() {
         fde := FDE(*cie)
-        fmt.Printf("%2d FDE length=%d, CIE=%d\n", i, fde.length(), rdr.CIE(fde))
+        fmt.Printf("%2d FDE length=%d, CIE=%d", i, fde.length(), rdr.CIE(fde))
+        // use a new reader so we don't mess up our iteration.
+        reader := Start(CFIs)
+        reader.Seek(rdr.CIE(fde))
+        assoc, err := reader.Next()
+        if err != nil {
+          log.Fatalf("bad index %d for associated CIE! %v", rdr.CIE(fde), err)
+        }
+        fmt.Printf(", Range: 0x%08x--0x%08x\n", int32(fde.begin(*assoc)),
+                   int32(fde.end(*assoc)))
       } else {
         fmt.Printf("%2d CIE length=%d\n", i, cie.length())
         fmt.Printf("\tVersion:        %30d\n", cie.version())
@@ -139,13 +146,22 @@ func main() {
         fmt.Printf("\tData alignment: %30d\n", cie.data_alignment())
         fmt.Printf("\tRetAddr reg:    %30d\n", cie.retaddr_reg())
         fmt.Printf("\tAugment Len:    %30d\n", cie.augmentation_len())
-        //fmt.Printf("\tAug data: %31s 0x%02x\n", "", cie.aug_data())
+        fmt.Printf("\tFDE Encoding:   %15v, %15v (0x%x)\n", cie.Format(),
+                   cie.Application(), cie.fde_encoding())
       }
       i++
     }
   }
+}
 
-/*
+func readhdr(fname string) {
+  legolas, err := elf.Open(fname)
+  if err != nil {
+    fmt.Fprintf(os.Stderr, "could not open '%s': %s\n", fname, err)
+    return
+  }
+  defer legolas.Close()
+
   framehdr := legolas.Section(".eh_frame_hdr")
   fhdr, err := section(fname, framehdr.Offset, framehdr.Size)
   if err != nil {
@@ -153,20 +169,19 @@ func main() {
     return
   }
   fmt.Printf("fhdr version: %d\n", fhdr[0])
-  fmt.Printf("fhdr encoding format: %s, %s\n", algorithm(fhdr[1]),
-             encoding(encptr(fhdr[1] & 0x0f)))
-  fmt.Printf("fhdr FDE encoding format: %s, %s\n", algorithm(fhdr[2]),
-             encoding(encptr(fhdr[2] & 0x0f)))
+  fmt.Printf("fhdr encoding format: %v, %v\n", FDEApplication(fhdr[1] & 0xf0),
+             FDEFormat(fhdr[1] & 0x0f))
+  fmt.Printf("fhdr FDE encoding format: %s, %s\n",
+             FDEApplication(fhdr[2] & 0xf0), FDEFormat(fhdr[2] & 0x0f))
   var fptr uint64
-  switch(fhdr[1] & 0xf0) {
-  case eh_absolute: fptr = uint64(assembleu32(fhdr[3:3+4]))
+  switch(FDEApplication(fhdr[1] & 0xf0)) {
+  case Absolute: fptr = uint64(assembleu32(fhdr[3:3+4]))
   // this makes no sense.  what's the current PC?
-  case eh_relative: fptr = uint64(assembleu32(fhdr[3:3+4]))
-  case eh_data_rel: fptr = uint64(assembleu32(fhdr[3:3+4])) + framehdr.Offset
-  case eh_omit: fptr = 0x0
+  case Relative: fptr = uint64(assembleu32(fhdr[3:3+4]))
+  case DataRel: fptr = uint64(assembleu32(fhdr[3:3+4])) + framehdr.Offset
+  case OmitApplication: fptr = 0x0
   }
   fmt.Printf("start of .eh_frame: %d (0x%x)\n", fptr, fptr)
-*/
 }
 
 // A Reader is used for iterating through the CIEs present in the binary.  Each
@@ -193,7 +208,7 @@ func (r *Reader) build_index_table() {
   }
 }
 
-// Creates the iterator for running through CIE elements.
+// Creates an iterator for running through CIE elements.
 func Start(data []byte) *Reader {
   r := &Reader{b: data, idx: 0}
   r.build_index_table()
@@ -242,80 +257,52 @@ func assert(cond bool) {
 }
 
 // which algorithm to use for computing the address from the encoded values
+type FDEApplication byte
 const(
-  eh_absolute = 0x00 // raw address.
-  eh_relative = 0x10 // relative to current instruction ptr
-  eh_data_rel = 0x30 // relative to start of .eh_frame_hdr
-  eh_omit = 0xff // not present.
+  Absolute FDEApplication = 0x00 // raw address.
+  Relative FDEApplication = 0x10 // relative to current instruction ptr
+  TextRel FDEApplication = 0x20 // relative to .text; not in standards.
+  DataRel FDEApplication = 0x30 // relative to start of .eh_frame_hdr
+  FuncRel FDEApplication = 0x40 // relative to ...?; not in standards.
+  Indirect FDEApplication = 0x80 // indirect?  not in standards.
+  OmitApplication FDEApplication = 0xf0 // not present.
 )
-func algorithm(alg byte) string {
-  if alg == 0xff {
-    return "not present"
+func (app FDEApplication) String() string {
+  switch(app) {
+  case Absolute: return "Absolute"
+  case Relative: return "Relative"
+  case DataRel: return "Data relative"
+  case OmitApplication: return "Omitted"
   }
-  switch(alg & 0xf0) { // algorithm is only in high nibble!
-  case eh_absolute: return "absolute"
-  case eh_relative: return "relative"
-  case eh_data_rel: return "relative to .eh_frame_hdr start"
-  }
-  return "invalid algorithm"
-}
-// methods for the encoding of values
-type encptr uint
-const(
-  // eh_omit = 0xff ; borrowed from the above table, since it's the same.
-  eh_uleb128 encptr = 0x01 // DWARFs "uleb128" abomination
-  eh_udata2 = 0x02 // uint16
-  eh_udata4 = 0x03 // uint32
-  eh_udata8 = 0x04 // uint64
-  eh_sleb128 = 0x09 // DWARFs "sleb128" abomination
-  eh_sdata2 = 0x0a // int16
-  eh_sdata4 = 0x0b // int32
-  eh_sdata8 = 0x0c // int64
-)
-func encoding(method encptr) string {
-  if eh_omit == method {
-    return "omitted"
-  }
-  switch(method & 0xf) { // method is only in low nibble!
-  case eh_uleb128: return "uleb128"
-  case eh_udata2: return "uint16"
-  case eh_udata4: return "uint32"
-  case eh_udata8: return "uint64"
-  case eh_sleb128: return "sleb128"
-  case eh_sdata2: return "int16"
-  case eh_sdata4: return "int32"
-  case eh_sdata8: return "int64"
-  }
-  return "invalid encoding"
+  panic("invalid encoding for 'application'")
 }
 
-func assembleu32(b []byte) uint32 {
-  if len(b) != 4 {
-    log.Fatalf("invalid length %d\n", len(b))
-    return 0
+// methods for the encoding of values
+type FDEFormat uint
+const(
+  OmitFormat FDEFormat = 0x0f
+  ULEB128 FDEFormat = 0x01 // DWARF's "uleb128" abomination
+  UData2 FDEFormat = 0x02 // uint16
+  UData4 FDEFormat = 0x03 // uint32
+  UData8 FDEFormat = 0x04 // uint64
+  SLEB128 FDEFormat = 0x09 // DWARF's "sleb128" abomination
+  SData2 FDEFormat = 0x0a // int16
+  SData4 FDEFormat = 0x0b // int32
+  SData8 FDEFormat = 0x0c // int64
+)
+func (format FDEFormat) String() string {
+  switch(format) {
+  case OmitFormat: return "omitted"
+  case ULEB128: return "uleb128"
+  case UData2: return "uint16"
+  case UData4: return "uint32"
+  case UData8: return "uint64"
+  case SLEB128: return "sleb128"
+  case SData2: return "int16"
+  case SData4: return "int32"
+  case SData8: return "int64"
   }
-  var v uint32
-  buf := bytes.NewReader(b)
-  err := binary.Read(buf, binary.LittleEndian, &v)
-  if err != nil {
-    log.Fatalf("converting bytes: %v\n", err)
-    return 0
-  }
-  return v
-}
-func assembleu64(b []byte) uint64 {
-  if len(b) != 8 {
-    log.Fatalf("invalid length %d\n", len(b))
-    return 0
-  }
-  var v uint64
-  buf := bytes.NewReader(b)
-  err := binary.Read(buf, binary.LittleEndian, &v)
-  if err != nil {
-    log.Fatalf("converting bytes: %v\n", err)
-    return 0
-  }
-  return v
+  panic("invalid encoding for 'format'")
 }
 
 const(
@@ -513,6 +500,83 @@ func (cie *CIE) augmentation_len() uint64 {
   return alen
 }
 
+// returns the 'encoding' byte.  Internal use only!  Users should query
+// 'Application' and 'Format'.
+func (cie *CIE) fde_encoding() byte {
+  if cie.id() != 0 {
+    log.Fatalf("this is not a CIE: id 0x%x\n", cie.id())
+  }
+
+  b := ([]byte)(*cie)
+
+  offset := uint(9 + len(cie.augmentation())) + 1
+  { // internal LEBs for 'alignment'.
+    _, nbytes := uleb128(b[offset:offset+16]) // code alignment
+    offset += nbytes
+    _, nbytes = sleb128(b[offset:offset+16]) // data alignment
+    offset += nbytes
+  }
+
+  // this is fun.  in v1, the return address register was encoded in a single
+  // byte.  v3 used a LEB.  le sigh.
+  if cie.version() == 1 {
+    offset++
+  } else if cie.version() == 3 {
+    _, nbytes := uleb128(b[offset:offset+16])
+    offset += nbytes
+  } else {
+    panic("unknown version.  how big is the return address register?")
+  }
+
+  if cie.augmentation()[0] != 'z' {
+    panic("augmentation does not start with 'z'.  No length.  Very senseless.")
+  }
+
+  // the 'R' indicates our FDE encoding.  But we still need to watch for the
+  // other bytes: we need to skip the other fields.
+  aug := cie.augmentation()
+  for i := 0; i < len(aug); i++ {
+    ch := aug[i]
+    switch(ch) {
+    case 'z': { // length of aug data.  skip it.
+      _, nbytes := uleb128(b[offset:offset+16])
+      offset += nbytes
+    }
+    case 'L':
+      offset += 1
+    case 'R':
+      return b[offset]
+    case 'P':
+      offset += 1
+    case 'S':
+      // signal handler.  Supposedly this is just a boolean flag, so we can
+      // probably just get away with a no-op.  But I've never seen this in
+      // practice and would rather be notified than potentially-silently give
+      // bad data.
+      // Note this does not exist in any standard docs.
+      panic("signal handler case is unaccounted for")
+    }
+  }
+  // "0xff" is the 'this was not present' encoding.
+  return 0xff
+}
+
+// returns the FDE "application": how the FDE values should be applied.
+func (cie *CIE) Application() FDEApplication {
+  encoding := cie.fde_encoding()
+  if 0xff == encoding { // defaults to 'absolute'.
+    return Absolute
+  }
+  return FDEApplication(encoding & 0xf0)
+}
+
+// returns the FDE "format": how the addresses are encoded in the stream.
+func (cie *CIE) Format() FDEFormat {
+  encoding := cie.fde_encoding()
+  return FDEFormat(encoding & 0x0f)
+}
+
+
 type FDE []byte
 // returns the length of the FDE.
 func (fde *FDE) length() uint {
@@ -528,34 +592,79 @@ func (fde *FDE) id() uint {
   return as_cie.id()
 }
 
-/*
-{
-  auglen := uint64(0)
-  for aug := range cie.augmentation() {
-    switch(aug) {
-    case 'z':
-      alen, nb := uleb128(b[offset:offset+16])
-      auglen = alen
-      offset += nb
-      fmt.Printf("length of augmentation opcodes (bytes): %d\n", auglen)
-    case 'L':
-      lsda := int(b[offset])
-      offset++
-      fmt.Printf("LSDA encoding: %d\n", lsda)
-    case 'R':
-      fdeenc := int(b[offset])
-      offset++
-      fmt.Printf("FDE encoding: %d\n", fdeenc)
-    case 'P':
-      // I honestly have no idea what this means.
-      encoding := uint(b[offset])
-      offset++
-      v, nb := read_encoded(b, offset-1, encoding, uint64(offset-1) + auglen)
-      offset += nb
-    }
+// returns the starting address that this FDE applies to.
+func (fde *FDE) begin(cie CIE) uintptr {
+  offset := 4 + 4 // sizeof(length) + sizeof(id)
+
+  b := ([]byte)(*fde)
+
+  // How is that stored in the object?  The CIE knows.
+  switch(cie.Format()) {
+  case OmitFormat:
+    panic("this case is impossible; format should default to absolute")
+  case ULEB128: v, _ := uleb128(b[offset:offset+16]); return uintptr(v)
+  case UData2: return uintptr(assembleu16(b[offset:offset+2]))
+  case UData4: return uintptr(assembleu32(b[offset:offset+4]))
+  case UData8: return uintptr(assembleu64(b[offset:offset+8]))
+  case SLEB128: v, _ := sleb128(b[offset:offset+16]); return uintptr(v)
+  case SData2: return uintptr(assembles16(b[offset:offset+2]))
+  case SData4: return uintptr(assembles32(b[offset:offset+4]))
+  case SData8: return uintptr(assembles64(b[offset:offset+8]))
   }
+  panic("unreachable")
+  return 0x0
 }
-*/
+
+func (fde *FDE) end(cie CIE) uintptr {
+  offset := uint(4 + 4) // sizeof(length) + sizeof(id)
+
+  b := ([]byte)(cie)
+
+  addr := fde.begin(cie)
+
+  // Both the start address and length are sized according to the format.  We
+  // need to grab both and add the length to it.
+  switch(cie.Format()) {
+  case OmitFormat:
+    panic("impossible")
+  case ULEB128:
+    _, nb := uleb128(b[offset:offset+16])
+    offset += nb
+    length, nb := uleb128(b[offset:offset+16])
+    return addr+uintptr(length)
+  case UData2:
+    offset += 2
+    length := assembleu16(b[offset:offset+2])
+    return addr+uintptr(length)
+  case UData4:
+    offset += 4
+    length := assembleu32(b[offset:offset+4])
+    return addr+uintptr(length)
+  case UData8:
+    offset += 8
+    length := assembleu64(b[offset:offset+8])
+    return addr+uintptr(length)
+  case SLEB128:
+    _, nb := sleb128(b[offset:offset+16])
+    offset += nb
+    length, nb := sleb128(b[offset:offset+16])
+    return addr+uintptr(length)
+  case SData2:
+    offset += 2
+    length := assembles16(b[offset:offset+2])
+    return addr+uintptr(length)
+  case SData4:
+    offset += 4
+    length := assembles32(b[offset:offset+4])
+    return addr+uintptr(length)
+  case SData8:
+    offset += 8
+    length := assembles64(b[offset:offset+8])
+    return addr+uintptr(length)
+  }
+  panic("unreachable")
+  return 0x0
+}
 
 // gives back a byte array of the given section of a file.
 func section(filename string, offset uint64, len uint64) ([]byte, error) {
