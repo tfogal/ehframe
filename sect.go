@@ -99,6 +99,7 @@ import(
   "io"
   "log"
   "os"
+  "runtime"
 )
 
 var fname string
@@ -128,6 +129,7 @@ func main() {
     for cie, err := rdr.Next(); err == nil; cie, err = rdr.Next() {
       if cie.FDEp() {
         fde := FDE(*cie)
+        assert(fde.id() != 0)
         fmt.Printf("%2d FDE length=%d, CIE=%d", i, fde.length(), rdr.CIE(fde))
         // use a new reader so we don't mess up our iteration.
         reader := Start(CFIs)
@@ -136,8 +138,17 @@ func main() {
         if err != nil {
           log.Fatalf("bad index %d for associated CIE! %v", rdr.CIE(fde), err)
         }
-        fmt.Printf(", Range: 0x%08x--0x%08x\n", int32(fde.begin(*assoc)),
-                   int32(fde.end(*assoc)))
+        if assoc.Application() == Relative {
+          // the +8 is because the addresses are relative to the start of the
+          // *FDE*, and there are 8 bytes (4-byte length + 4-byte "CIE ID") at
+          // the start of every record that do not count as the FDE.
+          beg := relative(fde.begin(*assoc), rdr.prev_offset()+8, frame.Offset,
+                          0x400000)
+          end := relative(fde.end(*assoc), rdr.prev_offset()+8, frame.Offset,
+                          0x400000)
+          fmt.Printf(", Range: 0x%08x--0x%08x", beg, end)
+        }
+        fmt.Println("")
       } else {
         fmt.Printf("%2d CIE length=%d\n", i, cie.length())
         fmt.Printf("\tVersion:        %30d\n", cie.version())
@@ -152,6 +163,10 @@ func main() {
       i++
     }
   }
+}
+func relative(value int64, fde_off uint64, ehframe_off uint64,
+              loadaddr uintptr) uintptr {
+  return uintptr(value + int64(fde_off) + int64(ehframe_off) + int64(loadaddr))
 }
 
 func readhdr(fname string) {
@@ -231,6 +246,11 @@ func (r *Reader) Next() (*CIE, error) {
   cie := (CIE)(r.b[cie_offset:])
   return &cie, nil
 }
+// returns the (byte) offset of the last CIE that Next() gave.
+func (r *Reader) prev_offset() uint64 {
+  assert(r.idx > 0)
+  return uint64(r.indices[r.idx-1])
+}
 // Returns the associated index of the CIE for a given FDE.  The caller could
 // then read that CIE by Seek()ing to it.
 func (rdr *Reader) CIE(fde FDE) uint {
@@ -252,7 +272,11 @@ func (rdr *Reader) CIE(fde FDE) uint {
 
 func assert(cond bool) {
   if !cond {
-    panic("assertion failure")
+    _, fname, line, ok := runtime.Caller(1)
+    if ok {
+      log.Fatalf("assertion %s:%d failed\n", fname, line)
+    }
+    log.Fatalf("failed assertion\n")
   }
 }
 
@@ -342,11 +366,18 @@ func n_cfi_entries(b []byte) (uint, uint) {
 type CIE []byte
 func (cie *CIE) length() uint {
   b := ([]byte)(*cie)
-  len := assembleu32(b[0:0+4])
+  len := assembleu32(b[0:4])
   // I know of no tooling that can create such a length.  Probably a parse err.
   if len == 0xffffffff {
     panic("64bit .eh_frame information is not supported.  By anything.")
   }
+  // This should be unsigned.  But it should also not be ridiculously huge: 4
+  // billion bytes would be a pretty large function.
+  // This can sometimes catch offsets getting messed up / using the wrong base
+  // address for the byte array of the CIE.  But a malicious user could force
+  // us to crash by crafting an invalid object file, so might want to remove
+  // eventually...
+  assert((len & 0x80000000) == 0)
   return uint(len)
 }
 
@@ -592,9 +623,14 @@ func (fde *FDE) id() uint {
   return as_cie.id()
 }
 
-// returns the starting address that this FDE applies to.
-func (fde *FDE) begin(cie CIE) uintptr {
-  offset := 4 + 4 // sizeof(length) + sizeof(id)
+// returns the starting address that this FDE applies to.  Note that this does
+// not have the 'algorithm' applied to it.  The appropriate algorithm is almost
+// always 'Relative'.  In that case, you need to add in:
+//    the offset the ELF image was loaded at (0x400000 if this is not in mem)
+//    the offset of the .eh_frame section within the ELF image
+//    the offset within .eh_frame to the start of this FDE
+func (fde *FDE) begin(cie CIE) int64 {
+  offset := int(4 + 4) // sizeof(length) + sizeof(id)
 
   b := ([]byte)(*fde)
 
@@ -602,65 +638,78 @@ func (fde *FDE) begin(cie CIE) uintptr {
   switch(cie.Format()) {
   case OmitFormat:
     panic("this case is impossible; format should default to absolute")
-  case ULEB128: v, _ := uleb128(b[offset:offset+16]); return uintptr(v)
-  case UData2: return uintptr(assembleu16(b[offset:offset+2]))
-  case UData4: return uintptr(assembleu32(b[offset:offset+4]))
-  case UData8: return uintptr(assembleu64(b[offset:offset+8]))
-  case SLEB128: v, _ := sleb128(b[offset:offset+16]); return uintptr(v)
-  case SData2: return uintptr(assembles16(b[offset:offset+2]))
-  case SData4: return uintptr(assembles32(b[offset:offset+4]))
-  case SData8: return uintptr(assembles64(b[offset:offset+8]))
+  case ULEB128: v, _ := uleb128(b[offset:offset+16]); return int64(v)
+  case UData2: return int64(assembleu16(b[offset:offset+2]))
+  case UData4: return int64(assembleu32(b[offset:offset+4]))
+  case UData8: return int64(assembleu64(b[offset:offset+8]))
+  case SLEB128: v, _ := sleb128(b[offset:offset+16]); return int64(v)
+  case SData2: return int64(assembles16(b[offset:offset+2]))
+  case SData4: return int64(assembles32(b[offset:offset+4]))
+    //return uintptr(0x400000 - assembles32(b[offset:offset+4]))
+  case SData8: return int64(assembles64(b[offset:offset+8]))
   }
   panic("unreachable")
   return 0x0
 }
 
-func (fde *FDE) end(cie CIE) uintptr {
-  offset := uint(4 + 4) // sizeof(length) + sizeof(id)
+func (fde *FDE) end(cie CIE) int64 {
+  offset := int(4 + 4) // sizeof(length) + sizeof(id)
 
-  b := ([]byte)(cie)
+  b := ([]byte)(*fde)
 
   addr := fde.begin(cie)
 
-  // Both the start address and length are sized according to the format.  We
-  // need to grab both and add the length to it.
+  // The start address and length come next.  We already read the start address
+  // ('addr') and now need the length, then we'll just add them together.
+  // Unfortunately, we can't just statically compute a byte offset for the
+  // length: since they the start address could be a LEB, we don't know how
+  // long it is without actually parsing it.
+  // Note that in the signed cases we assert that we get back a non-negative
+  // value.  It does not make sense for the length to be negative.  We *should*
+  // do proper error handling, but in practice the only time we'll hit the case
+  // is if we have a coding bug or we hit a maliciously-created file.  We
+  // decide that we don't care about the latter and just assert it.
   switch(cie.Format()) {
   case OmitFormat:
     panic("impossible")
   case ULEB128:
     _, nb := uleb128(b[offset:offset+16])
-    offset += nb
+    offset += int(nb)
     length, nb := uleb128(b[offset:offset+16])
-    return addr+uintptr(length)
+    return addr+int64(length)
   case UData2:
     offset += 2
     length := assembleu16(b[offset:offset+2])
-    return addr+uintptr(length)
+    return addr+int64(length)
   case UData4:
     offset += 4
     length := assembleu32(b[offset:offset+4])
-    return addr+uintptr(length)
+    return addr+int64(length)
   case UData8:
     offset += 8
     length := assembleu64(b[offset:offset+8])
-    return addr+uintptr(length)
+    return addr+int64(length)
   case SLEB128:
     _, nb := sleb128(b[offset:offset+16])
-    offset += nb
+    offset += int(nb)
     length, nb := sleb128(b[offset:offset+16])
-    return addr+uintptr(length)
+    assert(length >= 0)
+    return addr+int64(length)
   case SData2:
     offset += 2
     length := assembles16(b[offset:offset+2])
-    return addr+uintptr(length)
+    assert(length >= 0)
+    return addr+int64(length)
   case SData4:
     offset += 4
     length := assembles32(b[offset:offset+4])
-    return addr+uintptr(length)
+    assert(length >= 0)
+    return addr+int64(length)
   case SData8:
     offset += 8
     length := assembles64(b[offset:offset+8])
-    return addr+uintptr(length)
+    assert(length >= 0)
+    return addr+length
   }
   panic("unreachable")
   return 0x0
