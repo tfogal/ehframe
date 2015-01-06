@@ -159,11 +159,18 @@ func main() {
         fmt.Printf("\tAugment Len:    %30d\n", cie.augmentation_len())
         fmt.Printf("\tFDE Encoding:   %15v, %15v (0x%x)\n", cie.Format(),
                    cie.Application(), cie.fde_encoding())
+        fmt.Printf("\tProgram[0]:     [")
+        for _, x := range cie.program() {
+          fmt.Printf("0x%0x ", x)
+        }
+        fmt.Printf("]\n")
       }
       i++
     }
   }
 }
+
+// the 'Relative' FDE application is relative to the FDE itself.
 func relative(value int64, fde_off uint64, ehframe_off uint64,
               loadaddr uintptr) uintptr {
   return uintptr(value + int64(fde_off) + int64(ehframe_off) + int64(loadaddr))
@@ -590,6 +597,65 @@ func (cie *CIE) fde_encoding() byte {
   }
   // "0xff" is the 'this was not present' encoding.
   return 0xff
+}
+
+// Every CIE and FDE contains a program in DWARF's virtual machine.  This
+// returns the program's bytestream.
+func (cie *CIE) program() []byte {
+  if cie.id() != 0 {
+    log.Fatalf("this is not a CIE: id 0x%x\n", cie.id())
+  }
+
+  b := ([]byte)(*cie)
+
+  offset := uint(9 + len(cie.augmentation())) + 1
+  { // internal LEBs for 'alignment'.
+    _, nbytes := uleb128(b[offset:offset+16]) // code alignment
+    offset += nbytes
+    _, nbytes = sleb128(b[offset:offset+16]) // data alignment
+    offset += nbytes
+  }
+
+  // this is fun.  in v1, the return address register was encoded in a single
+  // byte.  v3 used a LEB.  le sigh.
+  if cie.version() == 1 {
+    offset++
+  } else if cie.version() == 3 {
+    _, nbytes := uleb128(b[offset:offset+16])
+    offset += nbytes
+  } else {
+    panic("unknown version.  how big is the return address register?")
+  }
+
+  if cie.augmentation()[0] != 'z' {
+    panic("augmentation does not start with 'z'.  No length.  Very senseless.")
+  }
+
+  // the 'R' indicates our FDE encoding.  But we still need to watch for the
+  // other bytes: we need to skip the other fields.
+  aug := cie.augmentation()
+  for i := 0; i < len(aug); i++ {
+    ch := aug[i]
+    switch(ch) {
+    case 'z': { // length of aug data.  skip it.
+      _, nbytes := uleb128(b[offset:offset+16])
+      offset += nbytes
+    }
+    case 'L': fallthrough
+    case 'R': fallthrough
+    case 'P': offset += 1
+    case 'S':
+      // signal handler.  Supposedly this is just a boolean flag, so we can
+      // probably just get away with a no-op.  But I've never seen this in
+      // practice and would rather be notified than potentially-silently give
+      // bad data.
+      // Note this does not exist in any standard docs.
+      panic("signal handler case is unaccounted for")
+    }
+  }
+
+  // the +4 is because the length does not include itself.
+  return b[offset:cie.length()+4]
 }
 
 // returns the FDE "application": how the FDE values should be applied.
