@@ -142,7 +142,7 @@ func (ixn Inst) String() string {
                      ixn.Oper[0], ixn.Oper[1], ixn.Oper[2], ixn.Oper[3])
 }
 
-func Decode(insn []byte, code_align uint) Inst {
+func Decode(insn []byte, code_align uint, data_align int64) Inst {
   rv := Inst{Op: Opcode(insn[0])}
   rv.Len = 1
   if rv.Op < CFA_advance_loc {
@@ -151,14 +151,22 @@ func Decode(insn []byte, code_align uint) Inst {
       op1, nbytes := uleb128(insn[1:1+16])
       op2, nb := uleb128(insn[1+nbytes:1+nbytes+16])
       rv.Oper[0] = Register(op1)
-      rv.Oper[1] = Register(op2)
+      rv.Oper[1] = Offset(op2)
       rv.Len = 1 + nbytes + nb
+    case CFA_undefined:
+      r, nbytes := uleb128(insn[1:1+16])
+      rv.Oper[0] = Register(r)
+      rv.Len = 1 + nbytes
     }
   } else if rv.Op < CFA_offset {
     rv.Len += uint(insn[0] & 0x3f) * code_align
   } else if rv.Op < CFA_restore {
-    // should parse out register, as well as update insn len
+    op1, nbytes := uleb128(insn[1:1+16])
+    rv.Oper[0] = Register(rv.Op & 0x3f)
+    rv.Oper[1] = Offset(int(op1) * int(data_align))
+    rv.Len = 1 + nbytes
   } else {
+    rv.Len = 1
     // should parse out register
   }
   return rv

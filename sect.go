@@ -159,11 +159,17 @@ func main() {
         fmt.Printf("\tAugment Len:    %30d\n", cie.augmentation_len())
         fmt.Printf("\tFDE Encoding:   %15v, %15v (0x%x)\n", cie.Format(),
                    cie.Application(), cie.fde_encoding())
-        fmt.Printf("\tProgram[0]:     [")
-        for _, x := range cie.program() {
-          fmt.Printf("0x%0x ", x)
+        fmt.Printf("\tProgram:\n")
+        program := cie.program()
+        offset := uint(0)
+        dal := cie.data_alignment()
+        cal := cie.code_alignment()
+        for offset < uint(len(program)) && program[offset] != 0x0 {
+          ixn := Decode(program[offset:], cal, dal)
+          fmt.Printf("\t\t%v\n", ixn)
+          offset += ixn.Len
         }
-        fmt.Printf("]\n")
+        fmt.Printf("\n")
       }
       i++
     }
