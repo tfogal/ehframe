@@ -124,7 +124,11 @@ type Operand interface {
 }
 type Register uint
 func (r Register) String() string {
-  return fmt.Sprintf("%d", uint(r))
+  return fmt.Sprintf("reg(%d)", uint(r))
+}
+type Offset int
+func (o Offset) String() string {
+  return fmt.Sprintf("offset %d", int(o))
 }
 
 // An Inst is a single DWARF CFA instruction.
