@@ -134,12 +134,12 @@ func (o Offset) String() string {
 // An Inst is a single DWARF CFA instruction.
 type Inst struct {
   Op Opcode
-  Oper [4]Operand
+  Oper [2]Operand
   Len uint         // length of the instruction, in bytes.
 }
 func (ixn Inst) String() string {
-  return fmt.Sprintf("0x%02x %v(%v, %v, %v, %v)", uint(ixn.Op), ixn.Op,
-                     ixn.Oper[0], ixn.Oper[1], ixn.Oper[2], ixn.Oper[3])
+  return fmt.Sprintf("0x%02x %v(%v, %v)", uint(ixn.Op), ixn.Op,
+                     ixn.Oper[0], ixn.Oper[1])
 }
 
 func Decode(insn []byte, code_align uint, data_align int64) Inst {
@@ -157,9 +157,33 @@ func Decode(insn []byte, code_align uint, data_align int64) Inst {
       r, nbytes := uleb128(insn[1:1+16])
       rv.Oper[0] = Register(r)
       rv.Len = 1 + nbytes
+    case CFA_def_cfa_offset:
+      offs, nb := uleb128(insn[1:1+16])
+      rv.Oper[0] = Offset(offs)
+      rv.Len = 1 + nb
+    case CFA_def_cfa_expression:
+      len, nb := uleb128(insn[1:1+16])
+      rv.Len = 1 + nb + uint(len)
+    case CFA_def_cfa_register:
+      reg, nb := uleb128(insn[1:1+16])
+      rv.Oper[0] = Register(reg)
+      rv.Len = 1 + nb
+    case CFA_advance_loc1:
+      offs := uint(insn[1])
+      rv.Oper[0] = Offset(offs)
+      rv.Len = 1 + 1
+    case CFA_advance_loc2:
+      offs := assembleu16(insn[1:3])
+      rv.Oper[0] = Offset(offs)
+      rv.Len = 1 + 2
+    case CFA_advance_loc4:
+      offs := assembleu32(insn[1:5])
+      rv.Oper[0] = Offset(offs)
+      rv.Len = 1 + 4
     }
   } else if rv.Op < CFA_offset {
-    rv.Len += uint(insn[0] & 0x3f) * code_align
+    rv.Oper[0] = Offset(insn[0] & 0x3f)
+    rv.Len = 1
   } else if rv.Op < CFA_restore {
     op1, nbytes := uleb128(insn[1:1+16])
     rv.Oper[0] = Register(rv.Op & 0x3f)
