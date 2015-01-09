@@ -148,6 +148,16 @@ func main() {
                           0x400000)
           fmt.Printf(", Range: 0x%08x--0x%08x", beg, end)
         }
+        fmt.Printf("\n\tProgram:\n")
+        program := fde.program(*assoc)
+        offset := uint(0)
+        dal := assoc.data_alignment()
+        cal := assoc.code_alignment()
+        for offset < uint(len(program)) && program[offset] != 0x0 {
+          ixn := Decode(program[offset:], cal, dal)
+          fmt.Printf("\t\t%v\n", ixn)
+          offset += ixn.Len
+        }
         fmt.Println("")
       } else {
         fmt.Printf("%2d CIE length=%d\n", i, cie.length())
@@ -662,6 +672,49 @@ func (cie *CIE) program() []byte {
 
   // the +4 is because the length does not include itself.
   return b[offset:cie.length()+4]
+}
+
+// Every CIE and FDE contains a program in DWARF's virtual machine.  This
+// returns the program's bytestream.
+func (fde *FDE) program(cie CIE) []byte {
+  assert(fde.id() != 0)
+
+  offset := int(4 + 4) // sizeof(length) + sizeof(id)
+
+  b := ([]byte)(*fde)
+
+  switch(cie.Format()) {
+  case OmitFormat: panic("impossible")
+  case ULEB128:
+    _, nb := uleb128(b[offset:offset+16])
+    offset += int(nb)
+    _, nb = uleb128(b[offset:offset+16])
+    offset += int(nb)
+  case SLEB128:
+    _, nb := sleb128(b[offset:offset+16])
+    offset += int(nb)
+    _, nb = sleb128(b[offset:offset+16])
+    offset += int(nb)
+  case UData2: fallthrough
+  case SData2: offset += 2*2
+  case UData4: fallthrough
+  case SData4: offset += 2*4
+  case UData8: fallthrough
+  case SData8: offset += 2*8
+  }
+
+  if cie.augmentation()[0] == 'z' {
+    end := offset+16
+    if int(fde.length()) < end {
+      end = int(fde.length())
+    }
+    _, nbytes := uleb128(b[offset:end])
+    offset += int(nbytes)
+  }
+  //log.Print("If the LSDA is not omitted, then there is an LSDA pointer " +
+  //          "here that we are not accounting for!")
+  // +4: the length does not include itself.
+  return b[offset:fde.length()+4]
 }
 
 // returns the FDE "application": how the FDE values should be applied.
