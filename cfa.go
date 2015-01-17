@@ -142,7 +142,7 @@ func (ixn Inst) String() string {
                      ixn.Oper[0], ixn.Oper[1])
 }
 
-func Decode(insn []byte, code_align uint, data_align int64) Inst {
+func Decode(insn []byte, code_align int, data_align int) Inst {
   rv := Inst{Op: Opcode(insn[0])}
   rv.Len = 1
   if rv.Op < CFA_advance_loc {
