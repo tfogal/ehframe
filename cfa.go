@@ -29,12 +29,6 @@
 package main
 import "fmt"
 
-type Program struct {
-  stream []byte
-  data_align uint
-  code_align uint
-}
-
 type Opcode uint
 const(
   // These define ranges of opcodes.  All "real" values are below
@@ -145,7 +139,7 @@ func (ixn Inst) String() string {
                      ixn.Oper[0], ixn.Oper[1])
 }
 
-func Decode(insn []byte, code_align int, data_align int) Inst {
+func Decode(insn []byte) Inst {
   rv := Inst{Op: Opcode(insn[0])}
   rv.Len = 1 // best guess if we don't know.
   if rv.Op < CFA_advance_loc {
@@ -190,7 +184,7 @@ func Decode(insn []byte, code_align int, data_align int) Inst {
   } else if rv.Op < CFA_restore {
     op1, nbytes := uleb128(insn[1:1+16])
     rv.Oper[0] = Register(rv.Op & 0x3f)
-    rv.Oper[1] = Offset(int(op1) * int(data_align))
+    rv.Oper[1] = Offset(int(op1))
     rv.Len = 1 + nbytes
   }
   return rv

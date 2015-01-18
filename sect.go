@@ -147,10 +147,10 @@ func main() {
 
         program := entry.Program
         offset := uint(0)
-        dal := int(entry.Associated.DataAlign)
-        cal := int(entry.Associated.CodeAlign)
+        //dal := int(entry.Associated.DataAlign)
+        //cal := int(entry.Associated.CodeAlign)
         for offset < uint(len(program)) && program[offset] != 0x0 {
-          ixn := Decode(program[offset:], cal, dal)
+          ixn := Decode(program[offset:])
           fmt.Printf("\t\t%v\n", ixn)
           offset += ixn.Len
         }
@@ -162,15 +162,15 @@ func main() {
         fmt.Printf("\tData alignment: %30d\n", entry.DataAlign)
         fmt.Printf("\tRetAddr reg:    %30d\n", entry.RetAddrReg)
         fmt.Printf("\tAugment Len:    %30d\n", entry.AugmentationLen)
-        fmt.Printf("\tFDE Eentryoding:   %15v, %15v\n", entry.Format,
+        fmt.Printf("\tFDE Encoding:   %15v, %15v\n", entry.Format,
                    entry.Application)
         fmt.Printf("\tProgram:\n")
         program := entry.Program
         offset := uint(0)
-        dal := entry.DataAlign
-        cal := entry.CodeAlign
+        //dal := entry.DataAlign
+        //cal := entry.CodeAlign
         for offset < uint(len(program)) && program[offset] != 0x0 {
-          ixn := Decode(program[offset:], cal, dal)
+          ixn := Decode(program[offset:])
           fmt.Printf("\t\t%v\n", ixn)
           offset += ixn.Len
         }
