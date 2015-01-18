@@ -14,27 +14,30 @@
 // do C++-style exception handling!  So they defined *another* section,
 // .eh_frame, that is defined to hold *almost* the same information, except
 // with some minor changes to headers and some field widths and the like.
-// This EH information is *always* present: the author's guess is that the
+// This EH information is *always* present: this author's guess is that the
 // information is needed even if an exception can be thrown *through* a
 // function.  Sooo.... basically all functions.  Even ones that aren't C++
-// functions.  Yeeeep.
+// functions.
+//
+// The author has never implemented exception handling in any language and
+// would appreciate clarification on this matter.
 //
 // At this point, there's two sections with (ostensibly) the same information,
-// and so any sane implementor just decides that the DWARF or the ABI or
-// whatever crap is complete bullshit and only implements .eh_frame, completely
-// ignoring .debug_frame.  The good news is that that's what happened.  The bad
-// news is that what is implemented is not exactly as the ABI describes.
+// and so any sane implementer just decides that having two sections is
+// garbage and only implements .eh_frame, ignoring .debug_frame.  The good news
+// is that that's what happened.  The bad news is that what is implemented is
+// not exactly as the ABI describes.
 //
-// So what is actually *stored* there?  Think of what happens when the
-// processor executes something like this:
+// So what is actually *stored* there?  Think of what happens when we have an
+// instruction stream like the following:
 //
 //    call 0x4095ef
 //    next-insn ...
 //
 // That call can be thought of as two "micro"instructions: push the address of
 // 'next-insn' onto the stack, and then jump to 0x4095ef.  This is important,
-// because when the function at 0x4095ef is finished, it needs to do the
-// reverse: pop off the address of 'next-insn' and jump to it.
+// because when the function at 0x4095ef is finished, the 'return' needs to
+// do the reverse: pop off the address of 'next-insn' and jump to it.
 //
 // A debugger or profiler or exception handler needs this 'next-insn' address
 // to be able to unwind the stack.  This is easy sometimes: if the instruction
@@ -85,7 +88,7 @@
 // gdb works on 64-bit binaries.
 //
 // In short, the only way you could possibly understand this crap is if you
-// grok somebody's source code that already reads this crap.  Due to
+// grok somebody's source code that already understands this crap.  Due to
 // inconsistencies among the ABI, DWARF, and cold, hard truth, don't trust
 // anything less: if it never ran against real binaries, it doesn't work.
 // Be careful when searching for help, too: x86 has a guaranteed frame pointer,
@@ -137,6 +140,9 @@ func main() {
           end := relative(entry.Offset[1], frame.Offset, 0x400000)
           fmt.Printf(", Range: 0x%08x--0x%08x", beg, end)
         }
+        // You may notice that all programs are an odd number of bytes.  That's
+        // because they are padded by a bunch of 1-byte NOPs, so that the next
+        // CIE or FDE is aligned (to 8 bytes, AFAICT).
         fmt.Printf("\n\tProgram (%d bytes):\n", len(entry.Program))
 
         program := entry.Program
@@ -222,10 +228,10 @@ type Reader struct {
   b []byte // data that holds the CIE information
   idx uint // current idx / where we are in the iteration space
   indices []uint // byte offset of each element.
-  associated []uint // for each FDE, which CIE (idx) it is associated with.
+  associated []uint // for each FDE, which CIE (the idx) it is associated with.
 }
 
-// internal.  builds the internal 'indices' table we use for seeking around.
+// builds the internal 'indices' table we use for seeking around.
 // 'indices[i]' gives the byte offset in 'b' that each CIE or FDE starts.
 func (r *Reader) build_index_table() {
   r.indices = make([]uint, 0)
@@ -236,7 +242,7 @@ func (r *Reader) build_index_table() {
       break
     }
     r.indices = append(r.indices, offset) 
-    // the length does not include the length of length of the length.
+    // +4: the length does not include the length of the length.
     offset += uint(length + 4)
   }
 }
@@ -255,6 +261,8 @@ func (r *Reader) Seek(idx uint) error {
   r.idx = idx
   return nil
 }
+
+// Next grabs the next CIE from the bytestream.
 func (r *Reader) Next() (CommonInfo, error) {
   if r.idx >= uint(len(r.indices)) {
     return nil, io.EOF
@@ -346,7 +354,7 @@ func (format FDEFormat) String() string {
 
 // DWARF describes CFIs (call frame information) as being of two
 // types: CIEs and FDEs.  There is a 1-1 mapping between CIEs and
-// functions.  There is potentially-empty ordered sequence of FDEs per
+// functions.  There is a potentially-empty ordered sequence of FDEs per
 // function.
 
 type CommonInfo interface {
@@ -418,7 +426,7 @@ func parse_cie(cie []byte) (CIE, error) {
     return CIE{}, fmt.Errorf("invalid version %d", version)
   }
 
-  // augmentation starts 9 bytes in.  it's a null-terminated string.. the
+  // augmentation starts 9 bytes in.  it's a null-terminated string... the
   // question is, where's the null?
   null := 9
   for {
@@ -440,7 +448,6 @@ func parse_cie(cie []byte) (CIE, error) {
   code_align, nbytes := uleb128(cie[offset:offset+16])
 
   // old versions of gcc (before 3.0) used "eh" for the augmentation string.
-  // The rest then (of course) had a different format.
   // We don't care about such old code: just recompile it.
   if len(aug) > 1 && aug[0] == 'e' && aug[1] == 'h' {
     return CIE{}, errors.New("old EH info; recompile target program")
@@ -601,7 +608,7 @@ func parse_fde(fde []byte, cie CIE, fde_offset int64) (FDE, error) {
              Associated: cie, Program: program, length: uint(length)}, nil
 }
 
-// gives back a byte array of the given section of a file.
+// reads the given section and returns it as a byte array.
 func section(filename string, offset uint64, len uint64) ([]byte, error) {
   fp, err := os.Open(filename)
   if err != nil {

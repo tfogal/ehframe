@@ -7,7 +7,7 @@
 // The natural solution is to store a key-value table, where each key is an
 // instruction address and each value is, say, an encoded expression (offset
 // off of the stack pointer, perhaps?).  Then our fearless debugger need only
-// find decode the value for the current instruction pointer, compute a memory
+// find & decode the value for the current instruction pointer, compute a memory
 // address from a register and an offset of the value in that register, and
 // read that memory location---the return address.
 // 
@@ -15,7 +15,10 @@
 // offset, the values in the table are a sequence of *instructions* in a
 // Turing-complete stack-based virtual machine.  Debuggers must therefore
 // interpret the virtual machine's instructions to compute values such as the
-// return address.
+// return address.  The plus side of this approach is that it is possible to
+// encode information on callee-saved registers that must be restored (that
+// said, it's unclear why a Turing-complete language was necessary, as opposed
+// to a simple table).
 //
 // This implements the parsing of DWARF's virtual machine instruction set.
 //
@@ -144,7 +147,7 @@ func (ixn Inst) String() string {
 
 func Decode(insn []byte, code_align int, data_align int) Inst {
   rv := Inst{Op: Opcode(insn[0])}
-  rv.Len = 1
+  rv.Len = 1 // best guess if we don't know.
   if rv.Op < CFA_advance_loc {
     switch rv.Op {
     case CFA_def_cfa:
@@ -189,9 +192,6 @@ func Decode(insn []byte, code_align int, data_align int) Inst {
     rv.Oper[0] = Register(rv.Op & 0x3f)
     rv.Oper[1] = Offset(int(op1) * int(data_align))
     rv.Len = 1 + nbytes
-  } else {
-    rv.Len = 1
-    // should parse out register
   }
   return rv
 }
