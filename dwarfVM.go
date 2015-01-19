@@ -196,6 +196,11 @@ func (dvm *DwarfVM) Exec(ixn Inst, code_align int, data_align int) error {
 			assert(uint(ixn.Oper[0].(Register)) <= uint(RFlags)) // unknown reg?
 			dvm.CFA = RegCFA{Register: Dwarfx8664Reg(uint(ixn.Oper[0].(Register))),
 			                 Offset: int(ixn.Oper[1].(Offset))}
+		case CFA_def_cfa_offset:
+			reg, is_reg := dvm.CFA.(RegCFA)
+			assert(is_reg) // only valid when current rule is a RegCFA rule.
+			dvm.CFA = RegCFA{Register: reg.Register,
+			                 Offset: int(ixn.Oper[0].(Offset))}
 		case CFA_advance_loc1:
 			inc, ok := ixn.Oper[0].(Offset)
 			if !ok {
@@ -204,15 +209,26 @@ func (dvm *DwarfVM) Exec(ixn Inst, code_align int, data_align int) error {
 			incr := int(inc)
 			assert(incr > 0) // is this true? seems like the address should only ++
 			dvm.Location += uintptr(incr)
+		case CFA_def_cfa_expression:
+			fmt.Println("ignoring def_cfa_expression... hope this is okay")
+		case CFA_def_cfa_register:
+			reg, is_reg := dvm.CFA.(RegCFA)
+			assert(is_reg) // insn only valid when current rule is already a RegCFA
+			dvm.CFA = RegCFA{Register: Dwarfx8664Reg(uint(ixn.Oper[0].(Register))),
+			                 Offset: reg.Offset}
 		default:
 			return fmt.Errorf("unhandled opcode %v", ixn.Op)
 		}
 	} else if ixn.Op < CFA_offset {
-		return fmt.Errorf("offset insn '%v' not implemented!", ixn.Op)
+		offs := int(ixn.Oper[0].(Offset))
+		assert(offs > 0) // addresses only increase.
+		dvm.Location += uintptr(offs * code_align)
 	} else if ixn.Op < CFA_restore {
 		assert(uint(ixn.Oper[0].(Register)) <= uint(RFlags)) // unknown reg?
 		dvm.CFA = RegCFA{Register: Dwarfx8664Reg(uint(ixn.Oper[0].(Register))),
 		                 Offset: int(ixn.Oper[1].(Offset)) * data_align}
+	} else {
+		return fmt.Errorf("Unhandled instruction %v", ixn)
 	}
 	return nil
 }

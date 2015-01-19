@@ -157,7 +157,12 @@ func Decode(insn []byte) Inst {
       rv.Oper[0] = Offset(offs)
       rv.Len = 1 + nb
     case CFA_def_cfa_expression:
+      // This opcode is followed by a variable-length block of data specific
+      // to the instruction.  But first comes that block's length.
+      // We just skip it, and we hope that'll be okay given our limited desire
+      // of simply figuring out return addresses.
       len, nb := uleb128(insn[1:1+16])
+      rv.Oper[0] = Offset(len)
       rv.Len = 1 + nb + uint(len)
     case CFA_def_cfa_register:
       reg, nb := uleb128(insn[1:1+16])
