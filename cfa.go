@@ -106,8 +106,6 @@ func (op Opcode) String() string {
     default:
       return "unknown advance_loc"
     }
-  } else if op < CFA_advance_loc {
-    return "unknown advance_loc"
   } else if op < CFA_offset {
     return "advance_loc"
   } else if op < CFA_restore {
