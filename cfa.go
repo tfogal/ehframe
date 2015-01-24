@@ -117,8 +117,8 @@ func (op Opcode) String() string {
 type Operand interface {
   String() string
 }
-type Register uint
-func (r Register) String() string {
+type register uint
+func (r register) String() string {
   return fmt.Sprintf("reg(%d)", uint(r))
 }
 type Offset int
@@ -145,12 +145,12 @@ func Decode(insn []byte) Inst {
     case CFA_def_cfa:
       op1, nbytes := uleb128(insn[1:1+16])
       op2, nb := uleb128(insn[1+nbytes:1+nbytes+16])
-      rv.Oper[0] = Register(op1)
+      rv.Oper[0] = register(op1)
       rv.Oper[1] = Offset(op2)
       rv.Len = 1 + nbytes + nb
     case CFA_undefined:
       r, nbytes := uleb128(insn[1:1+16])
-      rv.Oper[0] = Register(r)
+      rv.Oper[0] = register(r)
       rv.Len = 1 + nbytes
     case CFA_def_cfa_offset:
       offs, nb := uleb128(insn[1:1+16])
@@ -166,7 +166,7 @@ func Decode(insn []byte) Inst {
       rv.Len = 1 + nb + uint(len)
     case CFA_def_cfa_register:
       reg, nb := uleb128(insn[1:1+16])
-      rv.Oper[0] = Register(reg)
+      rv.Oper[0] = register(reg)
       rv.Len = 1 + nb
     case CFA_advance_loc1:
       offs := uint(insn[1])
@@ -186,7 +186,7 @@ func Decode(insn []byte) Inst {
     rv.Len = 1
   } else if rv.Op < CFA_restore {
     op1, nbytes := uleb128(insn[1:1+16])
-    rv.Oper[0] = Register(rv.Op & 0x3f)
+    rv.Oper[0] = register(rv.Op & 0x3f)
     rv.Oper[1] = Offset(int(op1))
     rv.Len = 1 + nbytes
   }

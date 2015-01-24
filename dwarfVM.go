@@ -43,109 +43,109 @@ type interpreter interface {
 
 type Dwarfx8664Reg uint
 const(
-	Rax Dwarfx8664Reg = 0
-	Rdx Dwarfx8664Reg = iota
-	Rcx Dwarfx8664Reg = iota
-	Rbx Dwarfx8664Reg = iota
-	Rsi Dwarfx8664Reg = iota
-	Rdi Dwarfx8664Reg = iota
-	Rbp Dwarfx8664Reg = iota
-	Rsp Dwarfx8664Reg = iota
-	R8 Dwarfx8664Reg = 8 // neat.
-	R9 Dwarfx8664Reg = iota
-	R10 Dwarfx8664Reg = iota
-	R11 Dwarfx8664Reg = iota
-	R12 Dwarfx8664Reg = iota
-	R13 Dwarfx8664Reg = iota
-	R14 Dwarfx8664Reg = iota
-	R15 Dwarfx8664Reg = iota
-	RAddr Dwarfx8664Reg = iota // AFAICT this is not a real register.
-	Xmm0 Dwarfx8664Reg = 17
-	Xmm1 Dwarfx8664Reg = iota
-	Xmm2 Dwarfx8664Reg = iota
-	Xmm3 Dwarfx8664Reg = iota
-	Xmm4 Dwarfx8664Reg = iota
-	Xmm5 Dwarfx8664Reg = iota
-	Xmm6 Dwarfx8664Reg = iota
-	Xmm7 Dwarfx8664Reg = iota
-	Xmm8 Dwarfx8664Reg = iota
-	Xmm9 Dwarfx8664Reg = iota
-	Xmm10 Dwarfx8664Reg = iota
-	Xmm11 Dwarfx8664Reg = iota
-	Xmm12 Dwarfx8664Reg = iota
-	Xmm13 Dwarfx8664Reg = iota
-	Xmm14 Dwarfx8664Reg = iota
-	Xmm15 Dwarfx8664Reg = iota
-	St0 Dwarfx8664Reg = 33
-	St1 Dwarfx8664Reg = iota
-	St2 Dwarfx8664Reg = iota
-	St3 Dwarfx8664Reg = iota
-	St4 Dwarfx8664Reg = iota
-	St5 Dwarfx8664Reg = iota
-	St6 Dwarfx8664Reg = iota
-	St7 Dwarfx8664Reg = iota
-	Mm0 Dwarfx8664Reg = 41 // i.e. MMX
-	Mm1 Dwarfx8664Reg = iota
-	Mm2 Dwarfx8664Reg = iota
-	Mm3 Dwarfx8664Reg = iota
-	Mm4 Dwarfx8664Reg = iota
-	Mm5 Dwarfx8664Reg = iota
-	Mm6 Dwarfx8664Reg = iota
-	Mm7 Dwarfx8664Reg = iota
-	RFlags Dwarfx8664Reg = 49
+	rax Dwarfx8664Reg = 0
+	rdx Dwarfx8664Reg = iota
+	rcx Dwarfx8664Reg = iota
+	rbx Dwarfx8664Reg = iota
+	rsi Dwarfx8664Reg = iota
+	rdi Dwarfx8664Reg = iota
+	rbp Dwarfx8664Reg = iota
+	rsp Dwarfx8664Reg = iota
+	r8 Dwarfx8664Reg = 8 // neat.
+	r9 Dwarfx8664Reg = iota
+	r10 Dwarfx8664Reg = iota
+	r11 Dwarfx8664Reg = iota
+	r12 Dwarfx8664Reg = iota
+	r13 Dwarfx8664Reg = iota
+	r14 Dwarfx8664Reg = iota
+	r15 Dwarfx8664Reg = iota
+	rAddr Dwarfx8664Reg = iota // AFAICT this is not a real register.
+	xmm0 Dwarfx8664Reg = 17
+	xmm1 Dwarfx8664Reg = iota
+	xmm2 Dwarfx8664Reg = iota
+	xmm3 Dwarfx8664Reg = iota
+	xmm4 Dwarfx8664Reg = iota
+	xmm5 Dwarfx8664Reg = iota
+	xmm6 Dwarfx8664Reg = iota
+	xmm7 Dwarfx8664Reg = iota
+	xmm8 Dwarfx8664Reg = iota
+	xmm9 Dwarfx8664Reg = iota
+	xmm10 Dwarfx8664Reg = iota
+	xmm11 Dwarfx8664Reg = iota
+	xmm12 Dwarfx8664Reg = iota
+	xmm13 Dwarfx8664Reg = iota
+	xmm14 Dwarfx8664Reg = iota
+	xmm15 Dwarfx8664Reg = iota
+	st0 Dwarfx8664Reg = 33
+	st1 Dwarfx8664Reg = iota
+	st2 Dwarfx8664Reg = iota
+	st3 Dwarfx8664Reg = iota
+	st4 Dwarfx8664Reg = iota
+	st5 Dwarfx8664Reg = iota
+	st6 Dwarfx8664Reg = iota
+	st7 Dwarfx8664Reg = iota
+	mm0 Dwarfx8664Reg = 41 // i.e. MMX
+	mm1 Dwarfx8664Reg = iota
+	mm2 Dwarfx8664Reg = iota
+	mm3 Dwarfx8664Reg = iota
+	mm4 Dwarfx8664Reg = iota
+	mm5 Dwarfx8664Reg = iota
+	mm6 Dwarfx8664Reg = iota
+	mm7 Dwarfx8664Reg = iota
+	rFlags Dwarfx8664Reg = 49
 )
 func (reg Dwarfx8664Reg) String() string {
 	switch(reg) {
-	case Rax: return "%rax"
-	case Rdx: return "%rdx"
-	case Rcx: return "%rcx"
-	case Rbx: return "%rbx"
-	case Rsi: return "%rsi"
-	case Rdi: return "%rdi"
-	case Rbp: return "%rbp"
-	case Rsp: return "%rsp"
-	case R8: return "%r8"
-	case R9: return "%r9"
-	case R10: return "%r10"
-	case R11: return "%r11"
-	case R12: return "%r12"
-	case R13: return "%r13"
-	case R14: return "%r14"
-	case R15: return "%r15"
-	case RAddr: return "%r16"
-	case Xmm0: return "%xmm0"
-	case Xmm1: return "%xmm1"
-	case Xmm2: return "%xmm2"
-	case Xmm3: return "%xmm3"
-	case Xmm4: return "%xmm4"
-	case Xmm5: return "%xmm5"
-	case Xmm6: return "%xmm6"
-	case Xmm7: return "%xmm7"
-	case Xmm8: return "%xmm8"
-	case Xmm9: return "%xmm9"
-	case Xmm10: return "%xmm10"
-	case Xmm11: return "%xmm11"
-	case Xmm12: return "%xmm12"
-	case Xmm13: return "%xmm13"
-	case Xmm14: return "%xmm14"
-	case Xmm15: return "%xmm15"
-	case St0: return "%st0"
-	case St1: return "%st1"
-	case St2: return "%st2"
-	case St3: return "%st3"
-	case St4: return "%st4"
-	case St5: return "%st5"
-	case St6: return "%st6"
-	case St7: return "%st7"
-	case Mm0: return "%mmx0"
-	case Mm1: return "%mmx1"
-	case Mm2: return "%mmx2"
-	case Mm3: return "%mmx3"
-	case Mm4: return "%mmx4"
-	case Mm5: return "%mmx5"
-	case Mm6: return "%mmx6"
-	case Mm7: return "%mmx7"
-	case RFlags: return "%rflags"
+	case rax: return "%rax"
+	case rdx: return "%rdx"
+	case rcx: return "%rcx"
+	case rbx: return "%rbx"
+	case rsi: return "%rsi"
+	case rdi: return "%rdi"
+	case rbp: return "%rbp"
+	case rsp: return "%rsp"
+	case r8: return "%r8"
+	case r9: return "%r9"
+	case r10: return "%r10"
+	case r11: return "%r11"
+	case r12: return "%r12"
+	case r13: return "%r13"
+	case r14: return "%r14"
+	case r15: return "%r15"
+	case rAddr: return "%r16"
+	case xmm0: return "%xmm0"
+	case xmm1: return "%xmm1"
+	case xmm2: return "%xmm2"
+	case xmm3: return "%xmm3"
+	case xmm4: return "%xmm4"
+	case xmm5: return "%xmm5"
+	case xmm6: return "%xmm6"
+	case xmm7: return "%xmm7"
+	case xmm8: return "%xmm8"
+	case xmm9: return "%xmm9"
+	case xmm10: return "%xmm10"
+	case xmm11: return "%xmm11"
+	case xmm12: return "%xmm12"
+	case xmm13: return "%xmm13"
+	case xmm14: return "%xmm14"
+	case xmm15: return "%xmm15"
+	case st0: return "%st0"
+	case st1: return "%st1"
+	case st2: return "%st2"
+	case st3: return "%st3"
+	case st4: return "%st4"
+	case st5: return "%st5"
+	case st6: return "%st6"
+	case st7: return "%st7"
+	case mm0: return "%mmx0"
+	case mm1: return "%mmx1"
+	case mm2: return "%mmx2"
+	case mm3: return "%mmx3"
+	case mm4: return "%mmx4"
+	case mm5: return "%mmx5"
+	case mm6: return "%mmx6"
+	case mm7: return "%mmx7"
+	case rFlags: return "%rflags"
 	}
 	return fmt.Sprintf("unknown reg %d", uint(reg))
 }
@@ -187,20 +187,22 @@ func (dvm *DwarfVM) Exec(ixn Inst, code_align int, data_align int) error {
 	// register set', which of course is only our return address reg if we are
 	// really lucky.
 	if ixn.Op < CFA_advance_loc {
-	  switch(ixn.Op) {
+		switch(ixn.Op) {
 		case CFA_undefined:
-			assert(uint(ixn.Oper[0].(Register)) <= uint(RFlags)) // unknown reg?
-			reg := Dwarfx8664Reg(uint(ixn.Oper[0].(Register)))
-			dvm.CFA = UndefinedCFA{Register: reg}
-	  case CFA_def_cfa:
-			assert(uint(ixn.Oper[0].(Register)) <= uint(RFlags)) // unknown reg?
-			dvm.CFA = RegCFA{Register: Dwarfx8664Reg(uint(ixn.Oper[0].(Register))),
+			assert(uint(ixn.Oper[0].(register)) <= uint(rFlags)) // unknown reg?
+			reg := Dwarfx8664Reg(uint(ixn.Oper[0].(register)))
+			if reg <= r15 { // ignore irrelevant registers.
+				dvm.CFA = UndefinedCFA{Register: reg}
+			}
+		case CFA_def_cfa:
+			assert(uint(ixn.Oper[0].(register)) <= uint(rFlags)) // unknown reg?
+			dvm.CFA = RegCFA{Register: Dwarfx8664Reg(uint(ixn.Oper[0].(register))),
 			                 Offset: int(ixn.Oper[1].(Offset))}
 		case CFA_def_cfa_offset:
 			reg, is_reg := dvm.CFA.(RegCFA)
 			assert(is_reg) // only valid when current rule is a RegCFA rule.
 			dvm.CFA = RegCFA{Register: reg.Register,
-			                 Offset: int(ixn.Oper[0].(Offset))}
+			                 Offset: int(ixn.Oper[0].(Offset)) * code_align}
 		case CFA_advance_loc1:
 			inc, ok := ixn.Oper[0].(Offset)
 			if !ok {
@@ -214,7 +216,7 @@ func (dvm *DwarfVM) Exec(ixn Inst, code_align int, data_align int) error {
 		case CFA_def_cfa_register:
 			reg, is_reg := dvm.CFA.(RegCFA)
 			assert(is_reg) // insn only valid when current rule is already a RegCFA
-			dvm.CFA = RegCFA{Register: Dwarfx8664Reg(uint(ixn.Oper[0].(Register))),
+			dvm.CFA = RegCFA{Register: Dwarfx8664Reg(uint(ixn.Oper[0].(register))),
 			                 Offset: reg.Offset}
 		default:
 			return fmt.Errorf("unhandled opcode %v", ixn.Op)
@@ -224,9 +226,12 @@ func (dvm *DwarfVM) Exec(ixn Inst, code_align int, data_align int) error {
 		assert(offs > 0) // addresses only increase.
 		dvm.Location += uintptr(offs * code_align)
 	} else if ixn.Op < CFA_restore {
-		assert(uint(ixn.Oper[0].(Register)) <= uint(RFlags)) // unknown reg?
-		dvm.CFA = RegCFA{Register: Dwarfx8664Reg(uint(ixn.Oper[0].(Register))),
-		                 Offset: int(ixn.Oper[1].(Offset)) * data_align}
+		assert(uint(ixn.Oper[0].(register)) <= uint(rFlags)) // unknown reg?
+		reg := Dwarfx8664Reg(uint(ixn.Oper[0].(register)))
+		if reg <= r15 {
+			dvm.CFA = RegCFA{Register: Dwarfx8664Reg(uint(ixn.Oper[0].(register))),
+			                 Offset: int(ixn.Oper[1].(Offset)) * code_align}
+		}
 	} else {
 		return fmt.Errorf("Unhandled instruction %v", ixn)
 	}
