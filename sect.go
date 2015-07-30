@@ -93,93 +93,17 @@
 // anything less: if it never ran against real binaries, it doesn't work.
 // Be careful when searching for help, too: x86 has a guaranteed frame pointer,
 // and so all of this is complete nonsense for 32-bit x86.
-package main
+package ehframe
 
 import(
   "debug/elf"
   "errors"
-  "flag"
   "fmt"
   "io"
   "log"
   "os"
   "runtime"
 )
-
-var fname string
-func init() {
-  flag.StringVar(&fname, "f", "", "which file to examine")
-}
-
-func main() {
-  flag.Parse()
-  legolas, err := elf.Open(fname)
-  if err != nil {
-    fmt.Fprintf(os.Stderr, "could not open '%s': %s\n", fname, err)
-    return
-  }
-  defer legolas.Close()
-
-  frame := legolas.Section(".eh_frame")
-  CFIs, err := section(fname, frame.Offset, frame.Size)
-  if err != nil {
-    log.Fatalf("could not read .eh_frame: %v\n", err)
-    return
-  }
-
-  {
-    rdr := Start(CFIs)
-    i := 0
-    for cie, err := rdr.Next(); err == nil; cie, err = rdr.Next() {
-      switch entry := cie.(type) {
-      case FDE:
-        fmt.Printf("%2d FDE length=%d, CIElen=%d", i, entry.Length(),
-                   entry.Associated.Length())
-        if entry.Associated.Application == Relative {
-          beg := relative(entry.Offset[0], frame.Offset, 0x400000)
-          end := relative(entry.Offset[1], frame.Offset, 0x400000)
-          fmt.Printf(", Range: 0x%08x--0x%08x", beg, end)
-        }
-        // You may notice that all programs are an odd number of bytes.  That's
-        // because they are padded by a bunch of 1-byte NOPs, so that the next
-        // CIE or FDE is aligned (to 8 bytes, AFAICT).
-        fmt.Printf("\n\tProgram (%d bytes):\n", len(entry.Program))
-
-        program := entry.Program
-        offset := uint(0)
-        //dal := int(entry.Associated.DataAlign)
-        //cal := int(entry.Associated.CodeAlign)
-        for offset < uint(len(program)) && program[offset] != 0x0 {
-          ixn := Decode(program[offset:])
-          fmt.Printf("\t\t%v\n", ixn)
-          offset += ixn.Len
-        }
-        fmt.Println("")
-      case CIE:
-        fmt.Printf("%2d CIE length=%d\n", i, entry.Length())
-        fmt.Printf("\tAugmentation:   %30s\n", entry.Augmentation)
-        fmt.Printf("\tCode alignment: %30d\n", entry.CodeAlign)
-        fmt.Printf("\tData alignment: %30d\n", entry.DataAlign)
-        fmt.Printf("\tRetAddr reg:    %30d\n", entry.RetAddrReg)
-        fmt.Printf("\tAugment Len:    %30d\n", entry.AugmentationLen)
-        fmt.Printf("\tFDE Encoding:   %15v, %15v\n", entry.Format,
-                   entry.Application)
-        fmt.Printf("\tProgram:\n")
-        program := entry.Program
-        offset := uint(0)
-        //dal := entry.DataAlign
-        //cal := entry.CodeAlign
-        for offset < uint(len(program)) && program[offset] != 0x0 {
-          ixn := Decode(program[offset:])
-          fmt.Printf("\t\t%v\n", ixn)
-          offset += ixn.Len
-        }
-        fmt.Printf("\n")
-      }
-      i++
-    }
-  }
-}
 
 // 'Relative' means relative to the FDE itself.  We need to take into account
 // the load address of the whole ELF object (load address of programs if it is

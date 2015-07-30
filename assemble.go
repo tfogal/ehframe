@@ -1,4 +1,4 @@
-package main
+package ehframe
 import(
   "bytes"
   "encoding/binary"

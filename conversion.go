@@ -7,7 +7,7 @@
 //
 // There are no functions to *create* LEB128s, only convert them to sane
 // representations.  Proliferating LEB128s is the root of all evil.
-package main
+package ehframe
 import "io"
 
 func uleb128(leb []uint8) (uint64, uint) {

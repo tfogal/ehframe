@@ -26,7 +26,7 @@
 // program or shared library would be massive; the table is compressed.
 // Furthermore, the table is subject to alignment requirements, and therefore
 // tends to end with a series of NOPs.
-package main
+package ehframe
 import "fmt"
 
 type Opcode uint

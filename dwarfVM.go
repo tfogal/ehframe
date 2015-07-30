@@ -31,7 +31,7 @@
 // an externally-supplied region of code; the 'Location' value we track only
 // specifies the offset relative to the start of this region.  Thus, you'll
 // need to account for identifying that region in other code.
-package main
+package ehframe
 
 import(
 	"fmt"
